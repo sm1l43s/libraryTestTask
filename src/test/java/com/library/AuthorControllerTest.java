@@ -1,24 +1,24 @@
 package com.library;
 
+
 import com.library.dto.AuthorDto;
 import com.library.entity.Author;
 import com.library.repository.AuthorRepository;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import io.restassured.http.ContentType;
+import io.restassured.response.Response;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.test.context.junit4.SpringRunner;
 
 import java.util.ArrayList;
-import static org.assertj.core.api.Assertions.*;
 
+import static io.restassured.RestAssured.given;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@RunWith(SpringRunner.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 public class AuthorControllerTest {
 
@@ -26,48 +26,89 @@ public class AuthorControllerTest {
     private int port;
 
     @Autowired
-    private TestRestTemplate restTemplate;
-
-    @Autowired
     private AuthorRepository authorRepository;
 
-    @Before
+    @BeforeEach
     public void setUp() {
         authorRepository.deleteAll();
     }
 
-    @Test
-    public void createAuthor_ShouldReturnCreatedAuthor() {
-        // given
-        AuthorDto authorDto = new AuthorDto(null, "John Doe");
+    private AuthorDto createAuthorDto(String name) {
+        return new AuthorDto(null, name);
+    }
 
-        // when
-        ResponseEntity<AuthorDto> response = restTemplate.postForEntity("/api/v1/authors", authorDto, AuthorDto.class);
+    private Response postAuthor(AuthorDto authorDto) {
+        return given()
+                .port(port)
+                .contentType(ContentType.JSON)
+                .body(authorDto)
+                .when()
+                .post("/api/v1/authors");
+    }
 
-        // then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getId()).isNotNull();
-        assertThat(response.getBody().getName()).isEqualTo(authorDto.getName());
+    private Response getAuthorById(Long id) {
+        return given()
+                .port(port)
+                .when()
+                .get("/api/v1/authors/" + id);
+    }
+
+    private Response getAllAuthors() {
+        return given()
+                .port(port)
+                .when()
+                .get("/api/v1/authors");
+    }
+
+    private Response updateAuthor(AuthorDto authorDto) {
+        return given()
+                .port(port)
+                .contentType(ContentType.JSON)
+                .body(authorDto)
+                .when()
+                .put("/api/v1/authors/" + authorDto.getId());
+    }
+
+    private Response deleteAuthor(Long id) {
+        return given()
+                .port(port)
+                .when()
+                .delete("/api/v1/authors/" + id);
     }
 
     @Test
+    @DisplayName("Create author should return created author")
+    public void createAuthor_ShouldReturnCreatedAuthor() {
+        // given
+        AuthorDto authorDto = createAuthorDto("John Doe");
+
+        // when
+        Response response = postAuthor(authorDto);
+
+        // then
+        assertThat(response.statusCode()).isEqualTo(HttpStatus.CREATED.value());
+        assertThat(response.body().jsonPath().getString("id")).isNotNull();
+        assertThat(response.body().jsonPath().getString("name")).isEqualTo(authorDto.getName());
+    }
+
+    @Test
+    @DisplayName("Get author by id should return author with given id")
     public void getAuthorById_ShouldReturnAuthorWithGivenId() {
         // given
         Author author = new Author(null, "John Doe", new ArrayList<>());
         authorRepository.save(author);
 
         // when
-        ResponseEntity<AuthorDto> response = restTemplate.getForEntity("/api/v1/authors/" + author.getId(), AuthorDto.class);
+        Response response = getAuthorById(author.getId());
 
         // then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getId()).isEqualTo(author.getId());
-        assertThat(response.getBody().getName()).isEqualTo(author.getName());
+        assertThat(response.statusCode()).isEqualTo(HttpStatus.OK.value());
+        assertThat(response.body().jsonPath().getString("id")).isEqualTo(author.getId());
+        assertThat(response.body().jsonPath().getString("name")).isEqualTo(author.getName());
     }
 
     @Test
+    @DisplayName("Get all authors should return all authors")
     public void getAllAuthors_ShouldReturnAllAuthors() {
         // given
         Author author1 = new Author(null, "John Doe", new ArrayList<>());
@@ -76,16 +117,16 @@ public class AuthorControllerTest {
         authorRepository.save(author2);
 
         // when
-        ResponseEntity<AuthorDto[]> response = restTemplate.getForEntity("/api/v1/authors", AuthorDto[].class);
+        Response response = getAllAuthors();
 
         // then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody()).hasSize(2);
+        assertThat(response.statusCode()).isEqualTo(HttpStatus.OK.value());
+        assertThat(response.body().jsonPath().getList("")).hasSize(2);
 
     }
 
     @Test
+    @DisplayName("Update author should return updated author")
     public void updateAuthor_ShouldReturnUpdatedAuthor() {
         // given
         Author author = new Author(null, "John Doe", new ArrayList<>());
@@ -93,28 +134,30 @@ public class AuthorControllerTest {
         AuthorDto updatedAuthorDto = new AuthorDto(author.getId(), "Updated Name");
 
         // when
-        restTemplate.put("/api/v1/authors/" + author.getId(), updatedAuthorDto);
-        ResponseEntity<AuthorDto> response = restTemplate.getForEntity("/api/v1/authors/" + author.getId(), AuthorDto.class);
+        updateAuthor(updatedAuthorDto);
+
+        Response response = getAuthorById(updatedAuthorDto.getId());
 
         // then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(response.getBody()).isNotNull();
-        assertThat(response.getBody().getId()).isEqualTo(updatedAuthorDto.getId());
-        assertThat(response.getBody().getName()).isEqualTo(updatedAuthorDto.getName());
+        assertThat(response.statusCode()).isEqualTo(HttpStatus.OK.value());
+        assertThat(response.body().jsonPath().getString("id")).isEqualTo(updatedAuthorDto.getId());
+        assertThat(response.body().jsonPath().getString("name")).isEqualTo(updatedAuthorDto.getName());
     }
 
     @Test
+    @DisplayName("Delete author should delete author with given id")
     public void deleteAuthor_ShouldDeleteAuthorWithGivenId() {
         // given
         Author author = new Author(null, "John Doe", new ArrayList<>());
         authorRepository.save(author);
 
         // when
-        restTemplate.delete("/api/v1/authors/" + author.getId());
-        ResponseEntity<AuthorDto> response = restTemplate.getForEntity("/api/v1/authors/" + author.getId(), AuthorDto.class);
+        deleteAuthor(author.getId());
+
+        Response response = getAuthorById(author.getId());
 
         // then
-        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(response.getBody()).isNull();
+        assertThat(response.statusCode()).isEqualTo(HttpStatus.NOT_FOUND.value());
+        assertThat(response.body().asString()).isEmpty();
     }
 }
